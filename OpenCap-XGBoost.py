@@ -10,6 +10,16 @@ import io
 import zipfile
 import traceback
 
+# 建议映射配置
+ADVICE_MAP = {
+    "HFA": "您的**髋关节屈曲角度(HFA)**贡献了较多风险。建议：加强臀大肌离心训练（如深蹲、硬拉），增加触地时的缓冲行程。",
+    "HAA": "您的**髋关节内收角度(HAA)**偏大，这可能导致膝外翻。建议：强化臀中肌力量（如蚌式开合、侧抬腿），提高额状面稳定性。",
+    "KFA": "**膝关节屈曲(KFA)**不足（着地过直）。建议：练习软着地技术，着地时主动增加膝关节屈曲程度以吸收冲击力。",
+    "ADF": "**踝关节背屈(ADF)**不足。建议：改善踝关节活动度，加强小腿后群肌肉拉伸，避免硬性着地。",
+    "FPA": "**足偏角(FPA)**异常。建议：注意脚尖指向，避免过度内八或外八字着地，保持下肢力线一致。",
+    "TFA": "**躯干倾斜(TFA)**不稳定。建议：加强核心稳定性训练（如平板支撑、侧桥），减少触地时重心的剧烈波动。"
+}
+
 # ===================== 1. 身份验证逻辑 (集成版) =====================
 def get_opencap_token():
     """从 Secrets 获取凭据并向 OpenCap 请求 Token"""
@@ -162,20 +172,31 @@ def run_analysis(sid, keyword, model_obj):
             )
             st.pyplot(plt.gcf(), clear_figure=True)
 
-        # --- 建议部分 ---
-        with st.expander("📋 查看动作建议"):
-            st.markdown(f"""
-            * **分析对象**: `{trial_id}`
-            * **触地瞬间 (IC)**: 第 {ic_idx+1} 帧
-            * **训练建议**: 
-                1. 保持躯干和髋关节的良好控制。
-                2. 强化后群肌肉（Hamstrings）和核心稳定性训练。
-                3. 避免在疲劳状态下进行高强度的单腿着地练习。
-            """)
+       # --- 动态建议生成逻辑 ---
+        # 获取所有特征名和对应的 SHAP 值
+        shap_df = pd.DataFrame({
+            'feature': feature_names,
+            'contribution': exp.values
+        })
+        
+        # 筛选出贡献值为正（即增加风险）的特征，并按贡献度从大到小排序
+        risk_factors = shap_df[shap_df['contribution'] > 0].sort_values(by='contribution', ascending=False)
 
-    except Exception as e:
-        st.error(f"🚨 分析执行出错: {e}")
-        st.code(traceback.format_exc())
+        with st.expander("📋 针对性动作改善建议", expanded=True):
+            st.markdown(f"**分析对象**: `{trial_id}`  |  **触地瞬间 (IC)**: 第 {ic_idx+1} 帧")
+            
+            if not risk_factors.empty:
+                st.markdown("#### ⚠️ 需重点关注的风险项：")
+                for _, row in risk_factors.iterrows():
+                    f_name = row['feature']
+                    advice = ADVICE_MAP.get(f_name, "保持良好姿势。")
+                    # 使用 st.info 或 markdown 展示
+                    st.write(f"👉 **{f_name}**: {advice}")
+            else:
+                st.success("✨ 您的动作表现非常平衡，未发现明显的力学风险项！")
+            
+            st.markdown("---")
+            st.markdown("**通用基础建议：**\n1. 强化后群肌肉（Hamstrings）和核心稳定性训练。\n2. 避免在疲劳状态下进行高强度的单腿着地练习。")
 
 # ===================== 4. 运行逻辑 =====================
 if st.button("🚀 开始自动化分析", use_container_width=True):
