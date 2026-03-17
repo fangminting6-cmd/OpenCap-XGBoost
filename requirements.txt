@@ -7,3 +7,5 @@ scikit-learn
 shap
 xgboost
 imbalanced-learn
+python-decouple
+maskpass
