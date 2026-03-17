@@ -200,7 +200,6 @@ def run_analysis(sid, keyword, model_obj):
                 st.success("✨ 您的动作表现非常平衡，未发现明显的力学风险项！")
             
             st.markdown("---")
-            st.markdown("**通用基础建议：**\n1. 强化后群肌肉（Hamstrings）和核心稳定性训练。\n2. 避免在疲劳状态下进行高强度的单腿着地练习。")
 
     except Exception as e:
         st.error(f"🚨 分析执行出错: {e}")
