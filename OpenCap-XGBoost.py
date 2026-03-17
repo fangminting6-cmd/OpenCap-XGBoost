@@ -9,100 +9,131 @@ import matplotlib.pyplot as plt
 import io
 import zipfile
 import traceback
-from utilsAuthentication import get_token
 
-# ===================== 1. Streamlit 页面配置 =====================
+# ===================== 1. 身份验证逻辑 (集成版) =====================
+def get_opencap_token():
+    """从 Secrets 获取凭据并向 OpenCap 请求 Token"""
+    try:
+        # 从 Streamlit Cloud Secrets 读取
+        username = st.secrets["OPENCAP_USER"]
+        password = st.secrets["OPENCAP_PASS"]
+    except Exception:
+        st.error("❌ 错误：未在 Streamlit Secrets 中找到 OPENCAP_USER 或 OPENCAP_PASS")
+        st.stop()
+
+    login_url = "https://api.opencap.ai/login/"
+    try:
+        resp = requests.post(login_url, data={'username': username, 'password': password})
+        if resp.status_code == 200:
+            return resp.json().get('token')
+        else:
+            st.error(f"❌ 登录 OpenCap 失败 (状态码: {resp.status_code}): {resp.text}")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ 网络请求异常: {e}")
+        st.stop()
+
+# ===================== 2. Streamlit 页面配置 =====================
 st.set_page_config(page_title="ACL 损伤风险预测", layout="wide")
 
 st.title("🏃‍♂️ OpenCap ACL 载荷预测分析系统")
 
 # 侧边栏配置
-st.sidebar.header("配置参数")
+st.sidebar.header("⚙️ 配置参数")
 session_id = st.sidebar.text_input("Session ID", value="995d44f9-022a-449b-9dd2-2424318c3f54")
 trial_keyword = st.sidebar.text_input("试次筛选关键词", value="single-jumpGR_6_1")
 model_file = st.sidebar.file_uploader("上传模型文件 (.pkl)", type=["pkl"])
 
-# ===================== 2. 核心分析函数 =====================
+# ===================== 3. 核心分析逻辑 =====================
 def run_analysis(sid, keyword, model_obj):
     try:
-        st.info(f"[*] 正在获取 Token 并下载 Session 数据...")
-        token = get_token() 
-        headers = {"Authorization": f"Token {token}"}
-        url = f"https://api.opencap.ai/sessions/{sid}/download/"
-        
-        resp = requests.get(url, headers=headers)
-        if resp.status_code != 200:
-            st.error(f"❌ 下载失败，状态码: {resp.status_code}")
-            return
-
-        with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-            all_files = z.namelist()
-            all_mots = [f for f in all_files if f.endswith('.mot') and 'Kinematics' in f and 'static' not in f.lower()]
+        with st.status("🔍 正在执行分析流程...", expanded=True) as status:
+            st.write("正在获取身份令牌...")
+            token = get_opencap_token()
             
-            # 试次选择
-            selected_mot = next((m for m in all_mots if keyword.lower() in m.lower()), all_mots[0])
-            trial_id = os.path.basename(selected_mot).replace('.mot', '')
-            selected_trc = [f for f in all_files if f.endswith('.trc') and trial_id in f and 'MarkerData' in f][0]
+            st.write("正在从 OpenCap 下载 Session 数据...")
+            headers = {"Authorization": f"Token {token}"}
+            url = f"https://api.opencap.ai/sessions/{sid}/download/"
+            
+            resp = requests.get(url, headers=headers)
+            if resp.status_code != 200:
+                st.error(f"❌ 下载失败，状态码: {resp.status_code}")
+                return
 
-            # 解析数据
-            with z.open(selected_trc) as f:
-                df_trc = pd.read_csv(f, sep='\t', skiprows=6, header=None)
-            with z.open(selected_mot) as f:
-                content = f.read().decode('utf-8').splitlines()
-                header_idx = next(i for i, line in enumerate(content) if 'time' in line.lower() and '\t' in line)
-                df_mot = pd.read_csv(io.StringIO('\n'.join(content[header_idx:])), sep='\t')
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                all_files = z.namelist()
+                # 筛选动态试次的 MOT 文件
+                all_mots = [f for f in all_files if f.endswith('.mot') and 'Kinematics' in f and 'static' not in f.lower()]
+                
+                if not all_mots:
+                    st.error("❌ 该 Session 中未发现有效的 MOT 运动数据文件。")
+                    return
 
-        # --- IC 瞬间定位 ---
-        y_values = df_trc.iloc[:, 54].values 
-        apex_idx = np.argmax(y_values)
-        ic_idx = apex_idx
-        for i in range(apex_idx + 1, len(y_values)):
-            if y_values[i] < 0.15 and y_values[i] > y_values[i-1]:
-                ic_idx = i
-                break
-        
-        # --- 特征提取 ---
-        row = df_mot.iloc[ic_idx].copy()
-        feature_names = ["HFA", "HAA", "KFA", "ADF", "FPA", "TFA"]
-        feature_values = [
-            row.get('hip_flexion_r', 0),
-            row.get('hip_adduction_r', 0),
-            row.get('knee_angle_r', 0),
-            row.get('ankle_angle_r', 0),
-            row.get('subtalar_angle_r', 0) * -1,
-            row.get('lumbar_extension', 0) * -1
-        ]
-        features_array = np.array([feature_values])
-        
-        # --- 模型预测 ---
-        model = joblib.load(model_obj)
-        score = float(np.asarray(model.predict(features_array)).ravel()[0])
-        
-        # --- 结果展示 ---
+                # 根据关键词选择试次
+                selected_mot = next((m for m in all_mots if keyword.lower() in m.lower()), all_mots[0])
+                trial_id = os.path.basename(selected_mot).replace('.mot', '')
+                
+                # 寻找对应的 TRC 文件
+                try:
+                    selected_trc = [f for f in all_files if f.endswith('.trc') and trial_id in f and 'MarkerData' in f][0]
+                except IndexError:
+                    st.error(f"❌ 未找到与试次 {trial_id} 对应的 TRC 标记点数据。")
+                    return
+
+                st.write(f"正在解析试次数据: {trial_id}...")
+                with z.open(selected_trc) as f:
+                    df_trc = pd.read_csv(f, sep='\t', skiprows=6, header=None)
+                with z.open(selected_mot) as f:
+                    content = f.read().decode('utf-8').splitlines()
+                    header_idx = next(i for i, line in enumerate(content) if 'time' in line.lower() and '\t' in line)
+                    df_mot = pd.read_csv(io.StringIO('\n'.join(content[header_idx:])), sep='\t')
+
+            # --- IC 瞬间定位 (最高点后首个回弹点) ---
+            # 索引 54 对应 RBigToe 的垂直轴
+            y_values = df_trc.iloc[:, 54].values 
+            apex_idx = np.argmax(y_values)
+            ic_idx = apex_idx
+            for i in range(apex_idx + 1, len(y_values)):
+                if y_values[i] < 0.15 and y_values[i] > y_values[i-1]:
+                    ic_idx = i
+                    break
+            
+            # --- 特征提取 ---
+            row = df_mot.iloc[ic_idx].copy()
+            feature_names = ["HFA", "HAA", "KFA", "ADF", "FPA", "TFA"]
+            feature_values = [
+                row.get('hip_flexion_r', 0),
+                row.get('hip_adduction_r', 0),
+                row.get('knee_angle_r', 0),
+                row.get('ankle_angle_r', 0),
+                row.get('subtalar_angle_r', 0) * -1,
+                row.get('lumbar_extension', 0) * -1
+            ]
+            features_array = np.array([feature_values])
+            
+            st.write("正在加载模型并进行风险预测...")
+            model = joblib.load(model_obj)
+            score = float(np.asarray(model.predict(features_array)).ravel()[0])
+            status.update(label="✅ 分析完成！", state="complete")
+
+        # --- 结果展示面板 ---
+        st.divider()
         is_high_risk = score >= 2.45
         risk_text = "High Risk" if is_high_risk else "Low Risk"
-        risk_color = "red" if is_high_risk else "green"
+        risk_color = "#d63031" if is_high_risk else "#27ae60"
 
-        col1, col2 = st.columns(2)
-        col1.metric("Predicted ACL load (×BW)", f"{score:.2f}")
-        col2.markdown(f"### Risk Level: :{risk_color}[{risk_text}]")
-
-        st.markdown("---")
-        st.subheader("💡 Analysis & Recommendations")
-        st.write(f"分析试次: **{trial_id}** (IC Frame: {ic_idx+1})")
-        
-        st.markdown("""
-        * **Strength Training:** Focus on hamstrings and core stability.
-        * **Landing Technique:** Avoid excessive knee valgus and maintain hip control.
-        """)
+        m_col1, m_col2 = st.columns(2)
+        with m_col1:
+            st.metric("ACL Peak Load (×BW)", f"{score:.2f}")
+        with m_col2:
+            st.markdown(f"### 风险判定: <span style='color:{risk_color};'>{risk_text}</span>", unsafe_allow_html=True)
 
         # --- SHAP 可视化 ---
-        st.subheader("📊 SHAP 解释性分析 (Feature Contribution)")
+        st.subheader("📊 关键动作特征贡献分析 (SHAP)")
         explainer = shap.TreeExplainer(model)
         input_df = pd.DataFrame(features_array, columns=feature_names).round(1)
         shap_values = explainer.shap_values(input_df)
 
-        # 在 Streamlit 中绘制 Matplotlib 图形
         fig, ax = plt.subplots(figsize=(12, 3))
         shap.force_plot(
             explainer.expected_value, 
@@ -112,15 +143,31 @@ def run_analysis(sid, keyword, model_obj):
             show=False,
             plot_cmap=["#ff0051", "#008bfb"]
         )
-        st.pyplot(plt.gcf())
+        # 优化图表显示
+        plt.title(f"Trial: {trial_id} - Feature Importance at IC", fontsize=10)
+        st.pyplot(plt.gcf(), clear_figure=True)
+
+        # --- 建议部分 ---
+        with st.expander("📋 查看动作建议"):
+            st.markdown(f"""
+            * **分析对象**: `{trial_id}`
+            * **触地瞬间 (IC)**: 第 {ic_idx+1} 帧
+            * **训练建议**: 
+                1. 保持躯干和髋关节的良好控制。
+                2. 强化后群肌肉（Hamstrings）和核心稳定性训练。
+                3. 避免在疲劳状态下进行高强度的单腿着地练习。
+            """)
 
     except Exception as e:
-        st.error(f"分析过程中出错: {e}")
+        st.error(f"🚨 分析执行出错: {e}")
         st.code(traceback.format_exc())
 
-# ===================== 3. 运行逻辑 =====================
-if st.button("开始分析"):
+# ===================== 4. 运行逻辑 =====================
+if st.button("🚀 开始自动化分析", use_container_width=True):
     if model_file is not None:
         run_analysis(session_id, trial_keyword, model_file)
     else:
-        st.warning("请先在左侧上传模型文件 (.pkl)")
+        st.warning("⚠️ 请先在侧边栏上传训练好的模型文件 (.pkl)")
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Powered by OpenCap & XGBoost Model")
