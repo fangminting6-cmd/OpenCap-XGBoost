@@ -36,12 +36,12 @@ def get_opencap_token():
 # ===================== 2. Streamlit 页面配置 =====================
 st.set_page_config(page_title="ACL 损伤风险预测", layout="wide")
 
-st.title("🏃‍♂️ OpenCap ACL 载荷预测分析系统")
+st.title("🏃‍♂️ ACL损伤风险快速筛查系统")
 
 # 侧边栏配置
 st.sidebar.header("⚙️ 配置参数")
 session_id = st.sidebar.text_input("Session ID", value="995d44f9-022a-449b-9dd2-2424318c3f54")
-trial_keyword = st.sidebar.text_input("试次筛选关键词", value="single-jumpGR_6_1")
+trial_keyword = st.sidebar.text_input("动作试次名称", value="single-jumpGR_6_1")
 model_file = st.sidebar.file_uploader("上传模型文件 (.pkl)", type=["pkl"])
 
 # ===================== 3. 核心分析逻辑 =====================
@@ -119,12 +119,12 @@ def run_analysis(sid, keyword, model_obj):
         # --- 结果展示面板 ---
         st.divider()
         is_high_risk = score >= 2.45
-        risk_text = "High Risk" if is_high_risk else "Low Risk"
+        risk_text = "高风险" if is_high_risk else "低风险"
         risk_color = "#d63031" if is_high_risk else "#27ae60"
 
         m_col1, m_col2 = st.columns(2)
         with m_col1:
-            st.metric("ACL Peak Load (×BW)", f"{score:.2f}")
+            st.metric("ACL 应力值 (×BW)", f"{score:.2f}")
         with m_col2:
             st.markdown(f"### 风险判定: <span style='color:{risk_color};'>{risk_text}</span>", unsafe_allow_html=True)
 
@@ -132,20 +132,35 @@ def run_analysis(sid, keyword, model_obj):
         st.subheader("📊 关键动作特征贡献分析 (SHAP)")
         explainer = shap.TreeExplainer(model)
         input_df = pd.DataFrame(features_array, columns=feature_names).round(1)
-        shap_values = explainer.shap_values(input_df)
+        
+        # 计算 SHAP 值
+        shap_values_all = explainer(input_df)
+        # 提取当前这一行数据的 Explanation 对象（用于瀑布图）
+        exp = shap_values_all[0]
 
-        fig, ax = plt.subplots(figsize=(12, 3))
-        shap.force_plot(
-            explainer.expected_value, 
-            shap_values[0,:], 
-            input_df.iloc[0,:], 
-            matplotlib=True, 
-            show=False,
-            plot_cmap=["#ff0051", "#008bfb"]
-        )
-        # 优化图表显示
-        plt.title(f"Trial: {trial_id} - Feature Importance at IC", fontsize=10)
-        st.pyplot(plt.gcf(), clear_figure=True)
+        # 创建两个标签页，用户可以切换查看
+        tab1, tab2 = st.tabs(["瀑布图 (Waterfall)", "力图 (Force Plot)"])
+
+        with tab1:
+            st.write("瀑布图展示了各特征对基准值的累加贡献：")
+            fig_wf, ax_wf = plt.subplots(figsize=(10, 6))
+            # 这里的 max_display 控制显示的特征数量
+            shap.plots.waterfall(exp, max_display=10, show=False)
+            plt.tight_layout()
+            st.pyplot(plt.gcf())
+
+        with tab2:
+            st.write("力图展示了特征之间相互“推拉”的过程：")
+            # Force plot 需要特定的显示逻辑，我们将其包装在 matplotlib 模式下
+            shap.force_plot(
+                explainer.expected_value, 
+                exp.values, 
+                input_df.iloc[0,:], 
+                matplotlib=True, 
+                show=False,
+                plot_cmap=["#ff0051", "#008bfb"]
+            )
+            st.pyplot(plt.gcf(), clear_figure=True)
 
         # --- 建议部分 ---
         with st.expander("📋 查看动作建议"):
