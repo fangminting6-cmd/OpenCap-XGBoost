@@ -10,8 +10,9 @@ import io
 import zipfile
 import traceback
 import streamlit as st
-# ... 其他 import ...
 
+# ===================== 0. 全局配置 =====================
+DEFAULT_MODEL_NAME = "final_XGJ_model.pkl"  # <--- 新增：定义仓库里的模型文件名
 # ===================== 0. 全局配置 (新加) =====================
 ADVICE_MAP = {
     "HFA": "您的**髋关节屈曲角度(HFA)**贡献了较多风险。建议：加强臀大肌离心训练（如深蹲、硬拉），增加触地时的缓冲行程。",
@@ -54,7 +55,8 @@ st.title("🏃‍♂️ ACL损伤风险快速筛查系统")
 st.sidebar.header("⚙️ 配置参数")
 session_id = st.sidebar.text_input("Session ID", value="995d44f9-022a-449b-9dd2-2424318c3f54")
 trial_keyword = st.sidebar.text_input("动作试次名称", value="single-jumpGR_6_1")
-model_file = st.sidebar.file_uploader("上传模型文件 (.pkl)", type=["pkl"])
+# 修改点：将上传组件设为可选，不再是必填项
+model_file = st.sidebar.file_uploader("上传自定义模型 (不上传则使用内置默认模型)", type=["pkl"])
 
 # ===================== 3. 核心分析逻辑 =====================
 def run_analysis(sid, keyword, model_obj):
@@ -206,10 +208,16 @@ def run_analysis(sid, keyword, model_obj):
 
 # ===================== 4. 运行逻辑 =====================
 if st.button("🚀 开始自动化分析", use_container_width=True):
+    # 逻辑点：判断使用哪个模型源
     if model_file is not None:
+        # 如果用户上传了，用上传的
         run_analysis(session_id, trial_keyword, model_file)
+    elif os.path.exists(DEFAULT_MODEL_NAME):
+        # 如果没上传，但在仓库里找到了默认模型，用默认的
+        run_analysis(session_id, trial_keyword, DEFAULT_MODEL_NAME)
     else:
-        st.warning("⚠️ 请先在侧边栏上传训练好的模型文件 (.pkl)")
+        # 如果两个都没有，再报错
+        st.error(f"⚠️ 找不到模型文件！请上传 .pkl 文件或确保仓库中存在 {DEFAULT_MODEL_NAME}")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Powered by OpenCap & XGBoost Model")
