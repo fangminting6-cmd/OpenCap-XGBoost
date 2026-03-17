@@ -9,8 +9,10 @@ import matplotlib.pyplot as plt
 import io
 import zipfile
 import traceback
+import streamlit as st
+# ... 其他 import ...
 
-# 建议映射配置
+# ===================== 0. 全局配置 (新加) =====================
 ADVICE_MAP = {
     "HFA": "您的**髋关节屈曲角度(HFA)**贡献了较多风险。建议：加强臀大肌离心训练（如深蹲、硬拉），增加触地时的缓冲行程。",
     "HAA": "您的**髋关节内收角度(HAA)**偏大，这可能导致膝外翻。建议：强化臀中肌力量（如蚌式开合、侧抬腿），提高额状面稳定性。",
@@ -197,6 +199,10 @@ def run_analysis(sid, keyword, model_obj):
             
             st.markdown("---")
             st.markdown("**通用基础建议：**\n1. 强化后群肌肉（Hamstrings）和核心稳定性训练。\n2. 避免在疲劳状态下进行高强度的单腿着地练习。")
+
+    except Exception as e:
+        st.error(f"🚨 分析执行出错: {e}")
+        st.code(traceback.format_exc())
 
 # ===================== 4. 运行逻辑 =====================
 if st.button("🚀 开始自动化分析", use_container_width=True):
