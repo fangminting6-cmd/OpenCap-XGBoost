@@ -139,9 +139,7 @@ def run_analysis(sid, keyword, model_obj):
         m_col1, m_col2 = st.columns(2)
         with m_col1:
     # 模仿 m_col2 的 H3 排版，将标签与数值并列
-    st.markdown(
-        f"### ACL 应力值 (×BW): <span style='color:#2d3436; font-weight:normal; margin-left:10px;'>{score:.2f}</span>", 
-        unsafe_allow_html=True
+            st.markdown(f"### ACL 应力值 (×BW): <span style='color:#2d3436; font-weight:normal; margin-left:10px;'>{score:.2f}</span>", unsafe_allow_html=True)
         with m_col2:
             st.markdown(f"### 风险判定: <span style='color:{risk_color};'>{risk_text}</span>", unsafe_allow_html=True)
 
