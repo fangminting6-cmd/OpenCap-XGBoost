@@ -238,7 +238,7 @@ def run_analysis(sid, keyword, model_obj):
         # 获取所有特征名和对应的 SHAP 值
         shap_df = pd.DataFrame({
             'feature': feature_names,
-            'contribution': exp.values
+            'contribution': exp.values,
             'actual_value': feature_values  # 
         })
         
