@@ -70,6 +70,15 @@ ADVICE_MAP = {
         "**技术要点：** 维持脊柱中立位稳定，减少触地瞬间身体重心摆动。"
     )
 }
+# 各关节在触地瞬间(IC)的正常参考角度（度），需根据你的实验标准微调
+NORMAL_VALUES = {
+    "HFA": 28.0,  # 髋关节屈曲正常值
+    "HAA": 5,   # 髋关节内收正常值
+    "KFA": 26.0,  # 膝关节屈曲正常值
+    "ADF": 10.0,  # 踝关节背屈正常值
+    "FPA": 10.0,   # 足偏角正常值
+    "TFA": 25.0   # 躯干侧倾正常值
+}
 
 # ===================== 1. 身份验证逻辑 (集成版) =====================
 def get_opencap_token():
@@ -239,20 +248,78 @@ def run_analysis(sid, keyword, model_obj):
             st.markdown(f"**分析对象**: `{trial_id}`  |  **触地瞬间 (IC)**: 第 {ic_idx+1} 帧")
             
             if not risk_factors.empty:
-                st.markdown("#### ⚠️ 需重点关注的风险项：")
+                st.markdown("#### ⚠️ 高风险动作特征偏差分析 (实测值 vs 正常值)")
+                
+                # --- 开始绘制哑铃图 ---
+                # 根据高风险特征数量动态调整图表高度
+                fig_db, ax_db = plt.subplots(figsize=(8, len(risk_factors) * 0.8 + 1))
+                
+                y_labels = []
+                y_ticks = []
+                
+                # 倒序遍历，保证风险最高的在图表最上方
+                for idx, (index, row) in enumerate(risk_factors[::-1].iterrows()):
+                    f_name = row['feature']
+                    actual_val = row['actual_value']
+                    normal_val = NORMAL_VALUES.get(f_name, 0) # 获取正常值
+                    y = idx
+                    
+                    # 绘制连接线 (灰色)
+                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=4)
+                    
+                    # 绘制正常值点 (蓝色) 和 实测风险值点 (红色)
+                    ax_db.scatter(normal_val, y, color='#008bfb', s=250, zorder=2, label='正常基准值' if idx==len(risk_factors)-1 else "")
+                    ax_db.scatter(actual_val, y, color='#ff0051', s=250, zorder=2, label='实测风险值' if idx==len(risk_factors)-1 else "")
+                    
+                    # 添加数值标签（判断左右位置，避免重叠）
+                    left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
+                    # 左右各偏移一点点间距
+                    offset = max(abs(actual_val - normal_val) * 0.15, 2.0) 
+                    
+                    # 在点旁边写上具体数值
+                    if actual_val < normal_val:
+                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=11, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=11, color='#008bfb')
+                    else:
+                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=11, color='#008bfb')
+                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=11, color='#ff0051', fontweight='bold')
+                    
+                    y_labels.append(f_name)
+                    y_ticks.append(y)
+                
+                # 设置Y轴和X轴
+                ax_db.set_yticks(y_ticks)
+                ax_db.set_yticklabels(y_labels, fontsize=12, fontweight='bold', color='#2d3436')
+                ax_db.set_xlabel("角度 (Degree)", fontsize=11, color='#636e72')
+                
+                # 美化图表 (去掉边框，加上横向网格线)
+                ax_db.spines['top'].set_visible(False)
+                ax_db.spines['right'].set_visible(False)
+                ax_db.spines['left'].set_visible(False)
+                ax_db.spines['bottom'].set_color('#b2bec3')
+                ax_db.grid(axis='x', linestyle='--', alpha=0.5)
+                
+                # 设置 X 轴边界留白，防止标签被截断
+                x_min, x_max = ax_db.get_xlim()
+                ax_db.set_xlim(x_min - (x_max-x_min)*0.15, x_max + (x_max-x_min)*0.15)
+                
+                # 添加图例，放在图表顶部正中央
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=2, frameon=False, fontsize=11)
+                
+                plt.tight_layout()
+                st.pyplot(fig_db, clear_figure=True)
+                # --- 哑铃图绘制结束 ---
+
+                st.markdown("#### 🎯 动作改善建议：")
                 for _, row in risk_factors.iterrows():
                     f_name = row['feature']
                     advice = ADVICE_MAP.get(f_name, "保持良好姿势。")
-                    # 使用 st.info 或 markdown 展示
-                    st.write(f"👉 **{f_name}**: {advice}")
+                    st.info(f"👉 **{f_name}**: {advice}")
             else:
                 st.success("✨ 您的动作表现非常平衡，未发现明显的力学风险项！")
             
             st.markdown("---")
 
-    except Exception as e:
-        st.error(f"🚨 分析执行出错: {e}")
-        st.code(traceback.format_exc())
 
 # ===================== 4. 运行逻辑 =====================
 if st.button("🚀 开始自动化分析", use_container_width=True):
