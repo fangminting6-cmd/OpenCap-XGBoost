@@ -320,6 +320,11 @@ def run_analysis(sid, keyword, model_obj):
             
             st.markdown("---")
 
+    except Exception as e:
+
+        st.error(f"🚨 分析执行出错: {e}")
+
+        st.code(traceback.format_exc())
 
 # ===================== 4. 运行逻辑 =====================
 if st.button("🚀 开始自动化分析", use_container_width=True):
