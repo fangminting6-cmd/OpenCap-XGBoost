@@ -239,6 +239,7 @@ def run_analysis(sid, keyword, model_obj):
         shap_df = pd.DataFrame({
             'feature': feature_names,
             'contribution': exp.values
+            'actual_value': feature_values  # 
         })
         
         # 筛选出贡献值为正（即增加风险）的特征，并按贡献度从大到小排序
