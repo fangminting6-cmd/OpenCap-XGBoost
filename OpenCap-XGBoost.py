@@ -162,7 +162,7 @@ def run_analysis(sid, keyword, model_obj):
             
             # --- 特征提取 ---
             row = df_mot.iloc[ic_idx].copy()
-            feature_names = ["髋屈角", "髋内收角", "膝屈角", "踝背屈角", "足外展角", "躯干前倾角"]
+            feature_names = ["HFA", "HAA", "KFA", "ADF", "FPA", "TFA"]
             feature_values = [
                 row.get('hip_flexion_r', 0),
                 row.get('hip_adduction_r', 0),
