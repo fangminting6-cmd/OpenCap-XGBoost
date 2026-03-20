@@ -253,49 +253,47 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.4 + 0.6))
+                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.4 + 0.5), dpi=200)
                 
                 y_labels = []
                 y_ticks = []
                 
-                # 倒序遍历，保证风险最高的在图表最上方
                 for idx, (index, row) in enumerate(risk_factors[::-1].iterrows()):
                     f_name = row['feature']
                     actual_val = row['actual_value']
-                    normal_val = NORMAL_VALUES.get(f_name, 0) # 获取正常值
+                    normal_val = NORMAL_VALUES.get(f_name, 0)
                     y = idx
                     
-                    # 1. 线条变细 (lw 缩小到 1.5)
-                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=1.5)
+                    # 1. 极限细线 (lw=1)
+                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=1)
                     
-                    # 2. 散点圆圈大幅缩小 (s 从 100 缩小到 45)
-                    ax_db.scatter(normal_val, y, color='#008bfb', s=45, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
-                    ax_db.scatter(actual_val, y, color='#ff0051', s=45, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
+                    # 2. 极限小圆点 (s 从 45 骤降到 15)
+                    ax_db.scatter(normal_val, y, color='#008bfb', s=15, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
+                    ax_db.scatter(actual_val, y, color='#ff0051', s=15, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
                     
-                    # 添加数值标签
                     left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
-                    # 3. 缩小文字和圆圈的间距，防止文字跑太远 (下限改为 0.8)
-                    offset = max(abs(actual_val - normal_val) * 0.15, 0.8) 
+                    # 3. 极小间距，让数字紧贴圆点
+                    offset = max(abs(actual_val - normal_val) * 0.1, 0.5) 
                     
-                    # 4. 数据标签字体大幅缩小 (fontsize 缩小到 7)
+                    # 4. 极限小字体 (fontsize=6)
                     if actual_val < normal_val:
-                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=7, color='#ff0051', fontweight='bold')
-                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=7, color='#008bfb')
+                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=6, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=6, color='#008bfb')
                     else:
-                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=7, color='#008bfb')
-                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=7, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=6, color='#008bfb')
+                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=6, color='#ff0051', fontweight='bold')
                     
                     y_labels.append(f_name)
                     y_ticks.append(y)
                 
                 # 设置Y轴和X轴
                 ax_db.set_yticks(y_ticks)
-                # 5. Y轴坐标特征名缩小 (fontsize 缩小到 8)
-                ax_db.set_yticklabels(y_labels, fontsize=8, fontweight='bold', color='#2d3436')
-                # 6. X轴底部说明字体缩小 (fontsize 缩小到 8)
-                ax_db.set_xlabel("Angle (Degree)", fontsize=8, color='#636e72')
-                # 7. X轴数字刻度字体缩小
-                ax_db.tick_params(axis='x', labelsize=7)
+                # 5. Y轴标签字体缩小 (fontsize=7)
+                ax_db.set_yticklabels(y_labels, fontsize=7, fontweight='bold', color='#2d3436')
+                # 6. X轴底部标签字体缩小 (fontsize=7)
+                ax_db.set_xlabel("Angle (Degree)", fontsize=7, color='#636e72')
+                # 7. X轴数字刻度极小化 (labelsize=6)
+                ax_db.tick_params(axis='x', labelsize=6)
                 
                 # 美化图表 (去掉边框，加上横向网格线)
                 ax_db.spines['top'].set_visible(False)
@@ -304,12 +302,12 @@ def run_analysis(sid, keyword, model_obj):
                 ax_db.spines['bottom'].set_color('#b2bec3')
                 ax_db.grid(axis='x', linestyle='--', alpha=0.5)
                 
-                # 增加两侧留白防止文字被切掉
+                # 两侧留白
                 x_min, x_max = ax_db.get_xlim()
                 ax_db.set_xlim(x_min - (x_max-x_min)*0.25, x_max + (x_max-x_min)*0.25)
                 
-                # 8. 顶部图例字体缩小 (fontsize 缩小到 7)
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=2, frameon=False, fontsize=7)
+                # 8. 图例字体极小化 (fontsize=6)
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=2, frameon=False, fontsize=6)
                 
                 plt.tight_layout()
                 st.pyplot(fig_db, clear_figure=True, use_container_width=False)
