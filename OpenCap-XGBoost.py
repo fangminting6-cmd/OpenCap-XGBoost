@@ -253,7 +253,7 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.5 + 0.8))
+                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.4 + 0.6))
                 
                 y_labels = []
                 y_ticks = []
@@ -265,33 +265,37 @@ def run_analysis(sid, keyword, model_obj):
                     normal_val = NORMAL_VALUES.get(f_name, 0) # 获取正常值
                     y = idx
                     
-                    # 变细连接线
-                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=2)
+                    # 1. 线条变细 (lw 缩小到 1.5)
+                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=1.5)
                     
-                    # 缩小散点圆圈
-                    ax_db.scatter(normal_val, y, color='#008bfb', s=100, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
-                    ax_db.scatter(actual_val, y, color='#ff0051', s=100, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
+                    # 2. 散点圆圈大幅缩小 (s 从 100 缩小到 45)
+                    ax_db.scatter(normal_val, y, color='#008bfb', s=45, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
+                    ax_db.scatter(actual_val, y, color='#ff0051', s=45, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
                     
-                    # 添加数值标签（判断左右位置，避免重叠）
+                    # 添加数值标签
                     left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
-                    # 调整偏移量以适应更窄的小图
-                    offset = max(abs(actual_val - normal_val) * 0.15, 1.2) 
+                    # 3. 缩小文字和圆圈的间距，防止文字跑太远 (下限改为 0.8)
+                    offset = max(abs(actual_val - normal_val) * 0.15, 0.8) 
                     
-                    # 缩小数据标签字体
+                    # 4. 数据标签字体大幅缩小 (fontsize 缩小到 7)
                     if actual_val < normal_val:
-                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=9, color='#ff0051', fontweight='bold')
-                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=9, color='#008bfb')
+                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=7, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=7, color='#008bfb')
                     else:
-                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=9, color='#008bfb')
-                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=9, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=7, color='#008bfb')
+                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=7, color='#ff0051', fontweight='bold')
                     
                     y_labels.append(f_name)
                     y_ticks.append(y)
                 
                 # 设置Y轴和X轴
                 ax_db.set_yticks(y_ticks)
-                ax_db.set_yticklabels(y_labels, fontsize=10, fontweight='bold', color='#2d3436')
-                ax_db.set_xlabel("Angle (Degree)", fontsize=9, color='#636e72')
+                # 5. Y轴坐标特征名缩小 (fontsize 缩小到 8)
+                ax_db.set_yticklabels(y_labels, fontsize=8, fontweight='bold', color='#2d3436')
+                # 6. X轴底部说明字体缩小 (fontsize 缩小到 8)
+                ax_db.set_xlabel("Angle (Degree)", fontsize=8, color='#636e72')
+                # 7. X轴数字刻度字体缩小
+                ax_db.tick_params(axis='x', labelsize=7)
                 
                 # 美化图表 (去掉边框，加上横向网格线)
                 ax_db.spines['top'].set_visible(False)
@@ -300,16 +304,14 @@ def run_analysis(sid, keyword, model_obj):
                 ax_db.spines['bottom'].set_color('#b2bec3')
                 ax_db.grid(axis='x', linestyle='--', alpha=0.5)
                 
-                # 设置 X 轴边界留白，防止标签被截断
+                # 增加两侧留白防止文字被切掉
                 x_min, x_max = ax_db.get_xlim()
-                ax_db.set_xlim(x_min - (x_max-x_min)*0.2, x_max + (x_max-x_min)*0.2)
+                ax_db.set_xlim(x_min - (x_max-x_min)*0.25, x_max + (x_max-x_min)*0.25)
                 
-                # 调整图例位置
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False, fontsize=9)
+                # 8. 顶部图例字体缩小 (fontsize 缩小到 7)
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=2, frameon=False, fontsize=7)
                 
                 plt.tight_layout()
-                
-                # 【修改点 2】：增加 use_container_width=False，强制 Streamlit 保持图片原始的小尺寸，不要拉伸
                 st.pyplot(fig_db, clear_figure=True, use_container_width=False)
                 # --- 哑铃图绘制结束 ---
 
