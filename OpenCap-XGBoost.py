@@ -304,10 +304,10 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # 【修改点 1】：把上限从 len(risk_factors) 改成 len(risk_factors) + 0.5
                 # 这样会把图表内部的“天花板”再往上抬高一截，给最上面的 ADF 留出更多呼吸空间
-                ax_db.set_ylim(-1.0, len(risk_factors) + 0.5)
+                ax_db.set_ylim(-1.0, len(risk_factors) + 0.6)
                 
                 # 【修改点 2】：把图例的高度位置从 1.15 调高到 1.25 或 1.3
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False, fontsize=6)
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.5), ncol=2, frameon=False, fontsize=6)
                 
                 plt.tight_layout()
                 st.pyplot(fig_db, clear_figure=True, use_container_width=False)
