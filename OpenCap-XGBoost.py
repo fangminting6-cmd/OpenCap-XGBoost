@@ -253,7 +253,7 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.4 + 0.5), dpi=200)
+                fig_db, ax_db = plt.subplots(figsize=(3.0, len(risk_factors) * 0.6 + 0.5), dpi=200)
                 
                 y_labels = []
                 y_ticks = []
