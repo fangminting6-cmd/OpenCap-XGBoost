@@ -11,21 +11,6 @@ import zipfile
 import traceback
 import streamlit as st
 
-font_path = "msyh.ttc" 
-
-if os.path.exists(font_path):
-    # 把文件加入到 matplotlib 的字体库中
-    fm.fontManager.addfont(font_path)
-    # 获取这个字体的标准名称，并设置为全局默认字体
-    prop = fm.FontProperties(fname=font_path)
-    plt.rcParams['font.sans-serif'] = prop.get_name()
-else:
-    # 提醒你检查文件有没有传对
-    st.warning("⚠️ 找不到字体文件 msyh.ttc，图表中文可能无法显示，请检查文件是否已上传至仓库同级目录。")
-
-# 解决负号 '-' 显示为方块的问题
-plt.rcParams['axes.unicode_minus'] = False 
-
 # ===================== 0. 全局配置 =====================
 DEFAULT_MODEL_NAME = "final_XGJ_model.pkl"  # <--- 新增：定义仓库里的模型文件名
 # ===================== 0. 全局配置 (新加) =====================
@@ -268,7 +253,7 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(5.5, len(risk_factors) * 0.5 + 0.8))
+                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.5 + 0.8))
                 
                 y_labels = []
                 y_ticks = []
@@ -280,19 +265,19 @@ def run_analysis(sid, keyword, model_obj):
                     normal_val = NORMAL_VALUES.get(f_name, 0) # 获取正常值
                     y = idx
                     
-                    # 2. 变细连接线 (lw=4 改为 lw=2)
+                    # 变细连接线
                     ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=2)
                     
-                    # 3. 缩小散点圆圈 (s=250 改为 s=100)
-                    ax_db.scatter(normal_val, y, color='#008bfb', s=100, zorder=2, label='正常基准值' if idx==len(risk_factors)-1 else "")
-                    ax_db.scatter(actual_val, y, color='#ff0051', s=100, zorder=2, label='实测风险值' if idx==len(risk_factors)-1 else "")
+                    # 缩小散点圆圈
+                    ax_db.scatter(normal_val, y, color='#008bfb', s=100, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
+                    ax_db.scatter(actual_val, y, color='#ff0051', s=100, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
                     
                     # 添加数值标签（判断左右位置，避免重叠）
                     left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
-                    # 4. 调整偏移量以适应小图
+                    # 调整偏移量以适应更窄的小图
                     offset = max(abs(actual_val - normal_val) * 0.15, 1.2) 
                     
-                    # 5. 缩小数据标签字体 (fontsize 改为 9)
+                    # 缩小数据标签字体
                     if actual_val < normal_val:
                         ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=9, color='#ff0051', fontweight='bold')
                         ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=9, color='#008bfb')
@@ -305,9 +290,8 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # 设置Y轴和X轴
                 ax_db.set_yticks(y_ticks)
-                # 6. 缩小坐标轴字体 (fontsize 改为 10 和 9)
                 ax_db.set_yticklabels(y_labels, fontsize=10, fontweight='bold', color='#2d3436')
-                ax_db.set_xlabel("角度 (Degree)", fontsize=9, color='#636e72')
+                ax_db.set_xlabel("Angle (Degree)", fontsize=9, color='#636e72')
                 
                 # 美化图表 (去掉边框，加上横向网格线)
                 ax_db.spines['top'].set_visible(False)
@@ -318,13 +302,15 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # 设置 X 轴边界留白，防止标签被截断
                 x_min, x_max = ax_db.get_xlim()
-                ax_db.set_xlim(x_min - (x_max-x_min)*0.15, x_max + (x_max-x_min)*0.15)
+                ax_db.set_xlim(x_min - (x_max-x_min)*0.2, x_max + (x_max-x_min)*0.2)
                 
-                # 7. 缩小图例字体 (fontsize 改为 9) 并略微调整高度位置
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2), ncol=2, frameon=False, fontsize=9)
+                # 调整图例位置
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False, fontsize=9)
                 
                 plt.tight_layout()
-                st.pyplot(fig_db, clear_figure=True)
+                
+                # 【修改点 2】：增加 use_container_width=False，强制 Streamlit 保持图片原始的小尺寸，不要拉伸
+                st.pyplot(fig_db, clear_figure=True, use_container_width=False)
                 # --- 哑铃图绘制结束 ---
 
                 st.markdown("#### 🎯 动作改善建议：")
