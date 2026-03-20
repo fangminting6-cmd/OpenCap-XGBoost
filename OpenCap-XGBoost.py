@@ -11,6 +11,9 @@ import zipfile
 import traceback
 import streamlit as st
 
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'Songti SC', 'STHeiti', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
+
 # ===================== 0. 全局配置 =====================
 DEFAULT_MODEL_NAME = "final_XGJ_model.pkl"  # <--- 新增：定义仓库里的模型文件名
 # ===================== 0. 全局配置 (新加) =====================
@@ -253,7 +256,7 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(8, len(risk_factors) * 0.8 + 1))
+                fig_db, ax_db = plt.subplots(figsize=(5.5, len(risk_factors) * 0.5 + 0.8))
                 
                 y_labels = []
                 y_ticks = []
@@ -265,33 +268,34 @@ def run_analysis(sid, keyword, model_obj):
                     normal_val = NORMAL_VALUES.get(f_name, 0) # 获取正常值
                     y = idx
                     
-                    # 绘制连接线 (灰色)
-                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=4)
+                    # 2. 变细连接线 (lw=4 改为 lw=2)
+                    ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=2)
                     
-                    # 绘制正常值点 (蓝色) 和 实测风险值点 (红色)
-                    ax_db.scatter(normal_val, y, color='#008bfb', s=250, zorder=2, label='正常基准值' if idx==len(risk_factors)-1 else "")
-                    ax_db.scatter(actual_val, y, color='#ff0051', s=250, zorder=2, label='实测风险值' if idx==len(risk_factors)-1 else "")
+                    # 3. 缩小散点圆圈 (s=250 改为 s=100)
+                    ax_db.scatter(normal_val, y, color='#008bfb', s=100, zorder=2, label='正常基准值' if idx==len(risk_factors)-1 else "")
+                    ax_db.scatter(actual_val, y, color='#ff0051', s=100, zorder=2, label='实测风险值' if idx==len(risk_factors)-1 else "")
                     
                     # 添加数值标签（判断左右位置，避免重叠）
                     left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
-                    # 左右各偏移一点点间距
-                    offset = max(abs(actual_val - normal_val) * 0.15, 2.0) 
+                    # 4. 调整偏移量以适应小图
+                    offset = max(abs(actual_val - normal_val) * 0.15, 1.2) 
                     
-                    # 在点旁边写上具体数值
+                    # 5. 缩小数据标签字体 (fontsize 改为 9)
                     if actual_val < normal_val:
-                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=11, color='#ff0051', fontweight='bold')
-                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=11, color='#008bfb')
+                        ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=9, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=9, color='#008bfb')
                     else:
-                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=11, color='#008bfb')
-                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=11, color='#ff0051', fontweight='bold')
+                        ax_db.text(normal_val - offset, y, f"{normal_val:.1f}", va='center', ha='right', fontsize=9, color='#008bfb')
+                        ax_db.text(actual_val + offset, y, f"{actual_val:.1f}", va='center', ha='left', fontsize=9, color='#ff0051', fontweight='bold')
                     
                     y_labels.append(f_name)
                     y_ticks.append(y)
                 
                 # 设置Y轴和X轴
                 ax_db.set_yticks(y_ticks)
-                ax_db.set_yticklabels(y_labels, fontsize=12, fontweight='bold', color='#2d3436')
-                ax_db.set_xlabel("角度 (Degree)", fontsize=11, color='#636e72')
+                # 6. 缩小坐标轴字体 (fontsize 改为 10 和 9)
+                ax_db.set_yticklabels(y_labels, fontsize=10, fontweight='bold', color='#2d3436')
+                ax_db.set_xlabel("角度 (Degree)", fontsize=9, color='#636e72')
                 
                 # 美化图表 (去掉边框，加上横向网格线)
                 ax_db.spines['top'].set_visible(False)
@@ -304,8 +308,8 @@ def run_analysis(sid, keyword, model_obj):
                 x_min, x_max = ax_db.get_xlim()
                 ax_db.set_xlim(x_min - (x_max-x_min)*0.15, x_max + (x_max-x_min)*0.15)
                 
-                # 添加图例，放在图表顶部正中央
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=2, frameon=False, fontsize=11)
+                # 7. 缩小图例字体 (fontsize 改为 9) 并略微调整高度位置
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2), ncol=2, frameon=False, fontsize=9)
                 
                 plt.tight_layout()
                 st.pyplot(fig_db, clear_figure=True)
