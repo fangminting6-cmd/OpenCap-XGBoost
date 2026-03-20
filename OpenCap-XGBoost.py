@@ -253,7 +253,7 @@ def run_analysis(sid, keyword, model_obj):
                 
                 # --- 开始绘制哑铃图 ---
                 # 根据高风险特征数量动态调整图表高度
-                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.25 + 0.5), dpi=200)
+                fig_db, ax_db = plt.subplots(figsize=(4.0, len(risk_factors) * 0.25 + 0.8), dpi=200)
                 
                 y_labels = []
                 y_ticks = []
@@ -302,11 +302,13 @@ def run_analysis(sid, keyword, model_obj):
                 x_min, x_max = ax_db.get_xlim()
                 ax_db.set_xlim(x_min - (x_max-x_min)*0.25, x_max + (x_max-x_min)*0.25)
                 
-                # 【修改点 2】：强制去掉图表顶部和底部的多余空白，让内容紧凑居中
-                ax_db.set_ylim(-0.5, len(risk_factors) - 0.5)
+                # 【关键修改 2】：扩大 Y 轴的上下边界！
+                # 原来是 -0.5 到 len - 0.5，现在改成 -1.0 到 len
+                # 这样相当于在顶部和底部凭空增加了 0.5 的空白，同时把特征往中间挤紧
+                ax_db.set_ylim(-1.0, len(risk_factors))
                 
-                # 图例位置微调
-                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=2, frameon=False, fontsize=6)
+                # 【关键修改 3】：因为顶部有了留白，图例不需要放那么高了，把 1.3 改成了 1.15
+                ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=2, frameon=False, fontsize=6)
                 
                 plt.tight_layout()
                 st.pyplot(fig_db, clear_figure=True, use_container_width=False)
