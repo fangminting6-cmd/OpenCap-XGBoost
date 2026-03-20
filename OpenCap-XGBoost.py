@@ -11,8 +11,20 @@ import zipfile
 import traceback
 import streamlit as st
 
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'Songti SC', 'STHeiti', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
+font_path = "msyh.ttc" 
+
+if os.path.exists(font_path):
+    # 把文件加入到 matplotlib 的字体库中
+    fm.fontManager.addfont(font_path)
+    # 获取这个字体的标准名称，并设置为全局默认字体
+    prop = fm.FontProperties(fname=font_path)
+    plt.rcParams['font.sans-serif'] = prop.get_name()
+else:
+    # 提醒你检查文件有没有传对
+    st.warning("⚠️ 找不到字体文件 msyh.ttc，图表中文可能无法显示，请检查文件是否已上传至仓库同级目录。")
+
+# 解决负号 '-' 显示为方块的问题
+plt.rcParams['axes.unicode_minus'] = False 
 
 # ===================== 0. 全局配置 =====================
 DEFAULT_MODEL_NAME = "final_XGJ_model.pkl"  # <--- 新增：定义仓库里的模型文件名
