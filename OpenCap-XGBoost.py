@@ -295,25 +295,38 @@ def run_analysis(sid, keyword, model_obj):
             ]
             features_array = np.array([feature_values])
             
-            loaded_package = joblib.load(model_obj)
-            model = loaded_package['model']
-            scaler_X = loaded_package['scaler_X']
-            scaler_y = loaded_package['scaler_y']
-            background_data = loaded_package['background_data']
-            important_features = loaded_package['important_features']
+            # ================= 修改重点 =================
+            loaded_obj = joblib.load(model_obj)
+
+            # 智能判断：如果加载的是字典（包含Scaler），则解包；如果是纯模型，则直接使用
+            if isinstance(loaded_obj, dict):
+                model = loaded_obj['model']
+                scaler_X = loaded_obj.get('scaler_X', None)
+                scaler_y = loaded_obj.get('scaler_y', None)
+                important_features = loaded_obj.get('important_features', feature_names)
+            else:
+                model = loaded_obj  # 直接拿到 XGBoost 模型
+                scaler_X = None
+                scaler_y = None
+                important_features = feature_names  # 默认使用所有 6 个特征
 
             def get_real_prediction(raw_features_df):
-                scaled_x = scaler_X.transform(raw_features_df)
-                scaled_x_df = pd.DataFrame(scaled_x, columns=scaler_X.feature_names_in_)
-                sel_x = scaled_x_df[important_features]
+                if scaler_X is not None:
+                    sel_x = pd.DataFrame(scaler_X.transform(raw_features_df), columns=scaler_X.feature_names_in_)[important_features]
+                else:
+                    sel_x = raw_features_df[important_features]
+                
                 pred_s = model.predict(sel_x)
-                # 适配单目标输出如果形状为1D
                 if pred_s.ndim == 1:
                     pred_s = pred_s.reshape(-1, 1)
-                return scaler_y.inverse_transform(pred_s)
+                
+                if scaler_y is not None:
+                    return scaler_y.inverse_transform(pred_s)
+                return pred_s
 
             input_df_raw = pd.DataFrame(features_array, columns=feature_names)
             pred_real = get_real_prediction(input_df_raw)
+            # ================= 修改重点 =================
             
             # 单输出提取
             score_acl = float(pred_real[0][0] if pred_real.ndim == 2 else pred_real[0])
@@ -367,16 +380,15 @@ def run_analysis(sid, keyword, model_obj):
 
         st.subheader("📊 关键动作特征贡献分析 (SHAP)")
         
-        def shap_predict_wrapper(scaled_sel_data):
-            p = model.predict(scaled_sel_data)
-            if p.ndim == 1:
-                p = p.reshape(-1, 1)
-            return scaler_y.inverse_transform(p)
+        # ================= 修改重点：适配 XGBoost SHAP =================
+        if scaler_X is not None:
+            input_scaled_full = pd.DataFrame(scaler_X.transform(input_df_raw), columns=scaler_X.feature_names_in_)
+            input_sel_for_shap = input_scaled_full[important_features]
+        else:
+            input_sel_for_shap = input_df_raw[important_features]
 
-        input_scaled_full = pd.DataFrame(scaler_X.transform(input_df_raw), columns=scaler_X.feature_names_in_)
-        input_sel_for_shap = input_scaled_full[important_features]
-
-        explainer = shap.KernelExplainer(shap_predict_wrapper, background_data)
+        # 对于 XGBoost，直接使用 TreeExplainer，速度更快且无需包裹预测函数
+        explainer = shap.TreeExplainer(model)
         shap_values_raw = explainer.shap_values(input_sel_for_shap)
         
         # 兼容单输出提取
@@ -384,22 +396,26 @@ def run_analysis(sid, keyword, model_obj):
             val_acl = shap_values_raw[0] if np.array(shap_values_raw).ndim == 2 else shap_values_raw[0][0]
         elif shap_values_raw.ndim == 3:
             val_acl = shap_values_raw[0, :, 0]
-        else:
+        elif shap_values_raw.ndim == 2:
             val_acl = shap_values_raw[0]
+        else:
+            val_acl = shap_values_raw
 
         if isinstance(explainer.expected_value, (list, np.ndarray)):
             expected_val_acl = explainer.expected_value[0]
         else:
             expected_val_acl = explainer.expected_value
             
+        # 统一处理单位缩放显示（如果你的 XGBoost 模型是直接预测真实力值，就不需要 inverse_transform 解释器了）
         input_raw_sel = np.round(input_df_raw[important_features].iloc[0].values.astype(float), 1)
 
         exp_acl = shap.Explanation(
             values=val_acl, 
-            base_values=expected_val_acl, 
+            base_values=float(expected_val_acl), 
             data=input_raw_sel,  
             feature_names=important_features
         )
+        # ================= 修改重点 =================
 
         def draw_shap_plots(exp_obj, exp_val, target_name):
             st.markdown(f"**{target_name} - 瀑布图 (Waterfall):** 展示各特征对基准值的累加贡献 (单位: 真实量纲)")
@@ -421,7 +437,6 @@ def run_analysis(sid, keyword, model_obj):
             )
             st.pyplot(plt.gcf(), clear_figure=True)
 
-        # 直接绘制单一预测目标的 SHAP，去掉 Tabs
         draw_shap_plots(exp_acl, expected_val_acl, "ACL")
 
         # --- 动态建议生成逻辑 ---
