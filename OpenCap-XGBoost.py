@@ -284,7 +284,14 @@ def run_analysis(sid, keyword, model_obj):
                     break
             
             row = df_mot.iloc[ic_idx].copy()
-            feature_names = ["HFA", "HAA", "KFA", "ADF", "FPA", "TFA"]
+            feature_names = [
+                'hip_flexion_r', 
+                'hip_adduction_r', 
+                'knee_angle_r', 
+                'ankle_angle_r', 
+                'subtalar_angle_r', 
+                'lumbar_extension'
+            ]
             feature_values = [
                 row.get('hip_flexion_r', 0),
                 row.get('hip_adduction_r', 0),
@@ -330,9 +337,16 @@ def run_analysis(sid, keyword, model_obj):
             
             # 单输出提取
             score_acl = float(pred_real[0][0] if pred_real.ndim == 2 else pred_real[0])
-            
             status.update(label="✅ 分析完成！", state="complete")
             
+            name_mapping = {
+                'hip_flexion_r': 'HFA',
+                'hip_adduction_r': 'HAA',
+                'knee_angle_r': 'KFA',
+                'ankle_angle_r': 'ADF',
+                'subtalar_angle_r': 'FPA',
+                'lumbar_extension': 'TFA'
+            }
         # --- 结果展示面板 ---
         st.divider()
         
