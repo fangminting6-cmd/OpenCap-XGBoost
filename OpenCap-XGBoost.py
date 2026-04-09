@@ -9,12 +9,12 @@ import matplotlib.pyplot as plt
 import io
 import zipfile
 import traceback
-import streamlit as st
 import plotly.graph_objects as go
+import xgboost as xgb  # <--- 新增：确保 joblib 能正确反序列化 XGBoost 模型
 
 # ===================== 0. 全局配置 =====================
-DEFAULT_MODEL_NAME = "final_MLP_multioutput_model.pkl"  # <--- 新增：定义仓库里的模型文件名
-# ===================== 0. 全局配置 (新加) =====================
+DEFAULT_MODEL_NAME = "final_XGB_model.pkl"  # <--- 修改：定义仓库里的 XGBoost 模型文件名
+
 ADVICE_MAP = {
     "HFA": (
         " 🏋️‍♂️ 髋关节屈曲 (HFA) 优化方案\n\n"
@@ -71,21 +71,19 @@ ADVICE_MAP = {
         "**🎯 技术要点：** 维持脊柱中立位稳定，减少触地瞬间身体重心的左右摇晃。"
     )
 }
-# 各关节在触地瞬间(IC)的正常参考角度（度），需根据你的实验标准微调
+
 NORMAL_VALUES = {
-    "HFA": 28.0,  # 髋关节屈曲正常值
-    "HAA": 5,   # 髋关节内收正常值
-    "KFA": 26.0,  # 膝关节屈曲正常值
-    "ADF": 10.0,  # 踝关节背屈正常值
-    "FPA": 10.0,   # 足偏角正常值
-    "TFA": 25.0   # 躯干侧倾正常值
+    "HFA": 28.0,  
+    "HAA": 5,   
+    "KFA": 26.0,  
+    "ADF": 10.0,  
+    "FPA": 10.0,   
+    "TFA": 25.0   
 }
 
-# ===================== 1. 身份验证逻辑 (集成版) =====================
+# ===================== 1. 身份验证逻辑 =====================
 def get_opencap_token():
-    """从 Secrets 获取凭据并向 OpenCap 请求 Token"""
     try:
-        # 从 Streamlit Cloud Secrets 读取
         username = st.secrets["OPENCAP_USER"]
         password = st.secrets["OPENCAP_PASS"]
     except Exception:
@@ -109,15 +107,12 @@ st.set_page_config(page_title="ACL 损伤风险预测", layout="wide")
 
 st.title("🏃‍♂️ 韧带损伤风险快速筛查系统")
 
-# 侧边栏配置
 st.sidebar.header("⚙️ 配置参数")
 session_id = st.sidebar.text_input("Session ID", value="995d44f9-022a-449b-9dd2-2424318c3f54")
 trial_keyword = st.sidebar.text_input("动作试次名称", value="single-jumpGR_6_1")
-# 修改点：将上传组件设为可选，不再是必填项
 model_file = st.sidebar.file_uploader("上传自定义模型 (不上传则使用内置默认模型)", type=["pkl"])
 
 # ===================== 3. 核心分析逻辑 =====================
-# 💡 新增：定义 3D 骨架绘制函数
 def create_3d_skeleton_plot(df_trc, df_mot, ic_idx):
     marker_map = {
         "Neck": 2, "RShoulder": 5, "RElbow": 8, "RWrist": 11,
@@ -137,26 +132,21 @@ def create_3d_skeleton_plot(df_trc, df_mot, ic_idx):
         ["LHip", "LKnee", "LAnkle", "LHeel", "LBigToe", "LAnkle"]   
     ]
 
-    # --- 1. 动态范围计算 (修复上半身消失的关键) ---
-    # 提取所有标记点在所有时刻的垂直高度 (TRC数据的第2列是Y轴，即Plotly的Z轴)
     z_cols = [marker_map[m] + 1 for m in marker_map]
     all_z_data = pd.to_numeric(df_trc.iloc[:, z_cols].values.flatten(), errors='coerce')
     max_height_reached = np.nanmax(all_z_data) 
     
-    # 自动中心点定位 (基于骨盆水平轨迹)
     pelvis_x = pd.to_numeric(df_trc.iloc[:, marker_map["midHip"]], errors='coerce').dropna().values
     pelvis_y = pd.to_numeric(df_trc.iloc[:, marker_map["midHip"] + 2], errors='coerce').dropna().values
     cx = (np.percentile(pelvis_x, 95) + np.percentile(pelvis_x, 5)) / 2
     cy = (np.percentile(pelvis_y, 95) + np.percentile(pelvis_y, 5)) / 2
 
-    # 动态设定盒子大小：取 (最高点+0.3米缓冲) 或 (保底1.8米)
     box_size = max(1.8, max_height_reached + 0.3) 
     
     range_x = [cx - box_size/2, cx + box_size/2]
     range_y = [cy - box_size/2, cy + box_size/2]
     range_z = [0, box_size] 
 
-    # --- 2. 帧数据提取函数 ---
     def get_frame_data(frame_idx):
         x_vals, y_vals, z_vals = [], [], []
         for seg in segments:
@@ -181,7 +171,6 @@ def create_3d_skeleton_plot(df_trc, df_mot, ic_idx):
             texts.append(f"{val:.1f}°")
         return lx, ly, lz, texts
 
-    # --- 3. 初始化图表 ---
     x_init, y_init, z_init = get_frame_data(ic_idx)
     lx_init, ly_init, lz_init, lt_init = get_label_data(ic_idx)
 
@@ -199,7 +188,6 @@ def create_3d_skeleton_plot(df_trc, df_mot, ic_idx):
         marker=dict(size=2, color="#ff0051"), name="Joint Angles"
     ))
 
-    # --- 4. 构建动画帧 ---
     frames = []
     step = 2
     total_frames = len(df_trc)
@@ -218,7 +206,6 @@ def create_3d_skeleton_plot(df_trc, df_mot, ic_idx):
         ))
     fig.frames = frames
 
-    # --- 5. 交互控件：播放、暂停、进度条 ---
     fig.update_layout(
         paper_bgcolor='white',
         scene=dict(
@@ -265,18 +252,15 @@ def run_analysis(sid, keyword, model_obj):
 
             with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
                 all_files = z.namelist()
-                # 筛选动态试次的 MOT 文件
                 all_mots = [f for f in all_files if f.endswith('.mot') and 'Kinematics' in f and 'static' not in f.lower()]
                 
                 if not all_mots:
                     st.error("❌ 该 Session 中未发现有效的 MOT 运动数据文件。")
                     return
 
-                # 根据关键词选择试次
                 selected_mot = next((m for m in all_mots if keyword.lower() in m.lower()), all_mots[0])
                 trial_id = os.path.basename(selected_mot).replace('.mot', '')
                 
-                # 寻找对应的 TRC 文件
                 try:
                     selected_trc = [f for f in all_files if f.endswith('.trc') and trial_id in f and 'MarkerData' in f][0]
                 except IndexError:
@@ -291,8 +275,6 @@ def run_analysis(sid, keyword, model_obj):
                     header_idx = next(i for i, line in enumerate(content) if 'time' in line.lower() and '\t' in line)
                     df_mot = pd.read_csv(io.StringIO('\n'.join(content[header_idx:])), sep='\t')
 
-            # --- IC 瞬间定位 (最高点后首个回弹点) ---
-            # 索引 54 对应 RBigToe 的垂直轴
             y_values = df_trc.iloc[:, 54].values 
             apex_idx = np.argmax(y_values)
             ic_idx = apex_idx
@@ -301,7 +283,6 @@ def run_analysis(sid, keyword, model_obj):
                     ic_idx = i
                     break
             
-            # --- 特征提取 ---
             row = df_mot.iloc[ic_idx].copy()
             feature_names = ["HFA", "HAA", "KFA", "ADF", "FPA", "TFA"]
             feature_values = [
@@ -314,7 +295,6 @@ def run_analysis(sid, keyword, model_obj):
             ]
             features_array = np.array([feature_values])
             
-            # 1. 加载模型及核心变量
             loaded_package = joblib.load(model_obj)
             model = loaded_package['model']
             scaler_X = loaded_package['scaler_X']
@@ -322,58 +302,39 @@ def run_analysis(sid, keyword, model_obj):
             background_data = loaded_package['background_data']
             important_features = loaded_package['important_features']
 
-            # 2. 💡 定义唯一的预测出口：输入原始特征 -> 输出真实物理力
             def get_real_prediction(raw_features_df):
-                # 第一步：标准化特征
                 scaled_x = scaler_X.transform(raw_features_df)
                 scaled_x_df = pd.DataFrame(scaled_x, columns=scaler_X.feature_names_in_)
-                # 第二步：筛选核心特征
                 sel_x = scaled_x_df[important_features]
-                # 第三步：模型预测
                 pred_s = model.predict(sel_x)
-                # 第四步：逆向还原力值
+                # 适配单目标输出如果形状为1D
+                if pred_s.ndim == 1:
+                    pred_s = pred_s.reshape(-1, 1)
                 return scaler_y.inverse_transform(pred_s)
 
-            # 3. 执行面板预测
-            # 这里的 input_df_raw 必须包含所有原始特征 [HFA, HAA, KFA, ADF, FPA, TFA]
             input_df_raw = pd.DataFrame(features_array, columns=feature_names)
             pred_real = get_real_prediction(input_df_raw)
             
-            score_acl = float(pred_real[0][0])      # 严格对应 targets[0]
-            score_kneeload = float(pred_real[0][1]) # 严格对应 targets[1]
+            # 单输出提取
+            score_acl = float(pred_real[0][0] if pred_real.ndim == 2 else pred_real[0])
             
             status.update(label="✅ 分析完成！", state="complete")
+            
         # --- 结果展示面板 ---
         st.divider()
         
-        # 💡 1. 设定两个指标的高风险阈值 (请根据你的实验标准修改下面的数字)
         ACL_THRESHOLD = 2.45
-        KNEE_LOAD_THRESHOLD = 4.5  # <--- ⚠️ 请把 3.0 改为你判定 knee-load 高风险的实际标准
-        
-        # 💡 2. 分别判断两个指标是否超标
         is_acl_risk = score_acl >= ACL_THRESHOLD
-        is_knee_risk = score_kneeload >= KNEE_LOAD_THRESHOLD
         
-        # 💡 3. 总体风险判定：只要有一个指标超标，总体动作就判定为“高风险”
-        is_overall_risk = is_acl_risk or is_knee_risk
+        # 整体判定仅依据 ACL 结果
+        is_overall_risk = is_acl_risk
         overall_text = "🚨 高风险" if is_overall_risk else "✅ 低风险"
         overall_color = "#d63031" if is_overall_risk else "#27ae60"
 
-        # 调整为 3 列，展示指标的同时加上超标警告小标签
-        m_col1, m_col2 = st.columns(2)
-        
-        with m_col1:
-            acl_warning = "<span style='color:#d63031; font-size:22px; font-weight:bold;'> ▲</span>" if is_acl_risk else ""
-            st.markdown(f"### ACL 应力值（×BW）: <span style='color:#2d3436;'>{score_acl:.2f}</span>{acl_warning}", unsafe_allow_html=True)
-            
-        with m_col2:
-            knee_warning = "<span style='color:#d63031; font-size:22px; font-weight:bold;'> ▲</span>" if is_knee_risk else ""
-            st.markdown(f"### 膝关节总接触力（×BW）: <span style='color:#2d3436;'>{score_kneeload:.2f}</span>{knee_warning}", unsafe_allow_html=True)
+        acl_warning = "<span style='color:#d63031; font-size:22px; font-weight:bold;'> ▲</span>" if is_acl_risk else ""
+        st.markdown(f"### 🦵 ACL 应力值（×BW）: <span style='color:#2d3436;'>{score_acl:.2f}</span>{acl_warning}", unsafe_allow_html=True)
 
-        # 换行：展示总体风险判定 (占据整行宽度)
-        st.write("") # 加一点微小的间距
-        
-        # 使用 st.markdown 配合简单的背景色，让风险判定更醒目
+        st.write("") 
         bg_color = "rgba(214, 48, 49, 0.1)" if is_overall_risk else "rgba(39, 174, 96, 0.1)"
         st.markdown(
             f"""
@@ -383,14 +344,12 @@ def run_analysis(sid, keyword, model_obj):
             """, 
             unsafe_allow_html=True
         )
-        # =========================================================
-        # 💡 新增：在这里插入 3D 动作姿态重构视图
+
         # =========================================================
         st.subheader("🟢 动作捕捉数字孪生回放")
         col_3d, col_info = st.columns([2, 1])
         
         with col_3d:
-            # 调用我们在上面定义的 3D 绘制函数
             fig_3d = create_3d_skeleton_plot(df_trc, df_mot, ic_idx)
             st.plotly_chart(fig_3d, use_container_width=True)
             
@@ -406,56 +365,41 @@ def run_analysis(sid, keyword, model_obj):
         st.divider()
         # =========================================================
 
-        # --- SHAP 可视化 ---
         st.subheader("📊 关键动作特征贡献分析 (SHAP)")
         
-        # 💡 SHAP 专用的预测包装 (因为 SHAP 内部会传标准化的 sel 数据，我们只需做 预测+还原)
         def shap_predict_wrapper(scaled_sel_data):
             p = model.predict(scaled_sel_data)
+            if p.ndim == 1:
+                p = p.reshape(-1, 1)
             return scaler_y.inverse_transform(p)
 
-        # 准备 SHAP 输入
         input_scaled_full = pd.DataFrame(scaler_X.transform(input_df_raw), columns=scaler_X.feature_names_in_)
         input_sel_for_shap = input_scaled_full[important_features]
 
         explainer = shap.KernelExplainer(shap_predict_wrapper, background_data)
         shap_values_raw = explainer.shap_values(input_sel_for_shap)
         
-        # 5. 提取并对齐索引
+        # 兼容单输出提取
         if isinstance(shap_values_raw, list):
-            val_acl = shap_values_raw[0][0]      
-            val_kneeload = shap_values_raw[1][0] 
-        else:
-            # 3D Array 模式 [样本, 特征, 输出]
+            val_acl = shap_values_raw[0] if np.array(shap_values_raw).ndim == 2 else shap_values_raw[0][0]
+        elif shap_values_raw.ndim == 3:
             val_acl = shap_values_raw[0, :, 0]
-            val_kneeload = shap_values_raw[0, :, 1]
+        else:
+            val_acl = shap_values_raw[0]
 
-        # 6. 基准值对齐
-        if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > 1:
+        if isinstance(explainer.expected_value, (list, np.ndarray)):
             expected_val_acl = explainer.expected_value[0]
-            expected_val_kneeload = explainer.expected_value[1]
         else:
             expected_val_acl = explainer.expected_value
-            expected_val_kneeload = explainer.expected_value
             
-       # 7. 组装数据 (对显示的特征数值进行四舍五入，保留一位小数)
         input_raw_sel = np.round(input_df_raw[important_features].iloc[0].values.astype(float), 1)
 
         exp_acl = shap.Explanation(
             values=val_acl, 
             base_values=expected_val_acl, 
-            data=input_raw_sel,  # 此时这里的数值已经是 28.4 这种格式了
+            data=input_raw_sel,  
             feature_names=important_features
         )
-        exp_kneeload = shap.Explanation(
-            values=val_kneeload, 
-            base_values=expected_val_kneeload, 
-            data=input_raw_sel, 
-            feature_names=important_features
-        )
-
-        # --- 开始渲染 UI 标签页 ---
-        tab_acl, tab_kneeload = st.tabs(["🦵 ACL SHAP 解释图", "🏋️‍♂️ 膝关节总接触力 SHAP 解释图"])
 
         def draw_shap_plots(exp_obj, exp_val, target_name):
             st.markdown(f"**{target_name} - 瀑布图 (Waterfall):** 展示各特征对基准值的累加贡献 (单位: 真实量纲)")
@@ -477,14 +421,10 @@ def run_analysis(sid, keyword, model_obj):
             )
             st.pyplot(plt.gcf(), clear_figure=True)
 
-        with tab_acl:
-            draw_shap_plots(exp_acl, expected_val_acl, "ACL")
-
-        with tab_kneeload:
-            draw_shap_plots(exp_kneeload, expected_val_kneeload, "knee-load")
+        # 直接绘制单一预测目标的 SHAP，去掉 Tabs
+        draw_shap_plots(exp_acl, expected_val_acl, "ACL")
 
         # --- 动态建议生成逻辑 ---
-        # 基于 ACL 的贡献值生成建议
         shap_df = pd.DataFrame({
             'feature': important_features,
             'contribution': exp_acl.values,  
@@ -499,8 +439,6 @@ def run_analysis(sid, keyword, model_obj):
             if not risk_factors.empty:
                 st.markdown("#### ⚠️ 高风险动作特征偏差分析 (实测值 vs 正常值)")
                 
-                 # --- 开始绘制哑铃图 ---
-                # 根据高风险特征数量动态调整图表高度
                 fig_db, ax_db = plt.subplots(figsize=(3.0, len(risk_factors) * 0.25 + 0.8), dpi=200)
                 
                 y_labels = []
@@ -512,17 +450,14 @@ def run_analysis(sid, keyword, model_obj):
                     normal_val = NORMAL_VALUES.get(f_name, 0)
                     y = idx
                     
-                    # 连线
                     ax_db.plot([actual_val, normal_val], [y, y], color='#dcdde1', zorder=1, lw=1)
                     
-                    # 极小圆点
                     ax_db.scatter(normal_val, y, color='#008bfb', s=15, zorder=2, label='Normal Value' if idx==len(risk_factors)-1 else "")
                     ax_db.scatter(actual_val, y, color='#ff0051', s=15, zorder=2, label='Actual Risk' if idx==len(risk_factors)-1 else "")
                     
                     left_val, right_val = min(actual_val, normal_val), max(actual_val, normal_val)
                     offset = max(abs(actual_val - normal_val) * 0.1, 0.5) 
                     
-                    # 极限小字体
                     if actual_val < normal_val:
                         ax_db.text(actual_val - offset, y, f"{actual_val:.1f}", va='center', ha='right', fontsize=6, color='#ff0051', fontweight='bold')
                         ax_db.text(normal_val + offset, y, f"{normal_val:.1f}", va='center', ha='left', fontsize=6, color='#008bfb')
@@ -533,33 +468,26 @@ def run_analysis(sid, keyword, model_obj):
                     y_labels.append(f_name)
                     y_ticks.append(y)
                 
-                # 设置Y轴和X轴
                 ax_db.set_yticks(y_ticks)
                 ax_db.set_yticklabels(y_labels, fontsize=7, fontweight='bold', color='#2d3436')
                 ax_db.set_xlabel("Angle (Degree)", fontsize=7, color='#636e72')
                 ax_db.tick_params(axis='x', labelsize=6)
                 
-                # 美化图表
                 ax_db.spines['top'].set_visible(False)
                 ax_db.spines['right'].set_visible(False)
                 ax_db.spines['left'].set_visible(False)
                 ax_db.spines['bottom'].set_color('#b2bec3')
                 ax_db.grid(axis='x', linestyle='--', alpha=0.5)
                 
-                # 两侧留白
                 x_min, x_max = ax_db.get_xlim()
                 ax_db.set_xlim(x_min - (x_max-x_min)*0.25, x_max + (x_max-x_min)*0.25)
                 
-                # 【修改点 1】：把上限从 len(risk_factors) 改成 len(risk_factors) + 0.5
-                # 这样会把图表内部的“天花板”再往上抬高一截，给最上面的 ADF 留出更多呼吸空间
                 ax_db.set_ylim(-1.0, len(risk_factors) + 0.7)
                 
-                # 【修改点 2】：把图例的高度位置从 1.15 调高到 1.25 或 1.3
                 ax_db.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False, fontsize=6)
                 
                 plt.tight_layout()
                 st.pyplot(fig_db, clear_figure=True, use_container_width=False)
-                # --- 哑铃图绘制结束 ---
 
                 st.markdown("#### 🎯 动作处方：")
                 for _, row in risk_factors.iterrows():
@@ -585,4 +513,4 @@ if st.button("🚀 开始自动化分析", use_container_width=True):
         st.error(f"⚠️ 找不到模型文件！请上传 .pkl 文件或确保仓库中存在 {DEFAULT_MODEL_NAME}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Powered by OpenCap & MLP Model")
+st.sidebar.caption("Powered by OpenCap & XGBoost Model")
